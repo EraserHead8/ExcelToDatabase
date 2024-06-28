@@ -58,22 +58,27 @@ public class ExcelReader {
         if (cell == null) {
             return "";
         }
-        switch (cell.getCellType()) {
-            case STRING:
-                return cell.getStringCellValue();
-            case NUMERIC:
-                if (DateUtil.isCellDateFormatted(cell)) {
-                    return cell.getDateCellValue().toString();
-                } else {
-                    DecimalFormat df = new DecimalFormat("0.##########");
-                    return df.format(cell.getNumericCellValue());
-                }
-            case BOOLEAN:
-                return String.valueOf(cell.getBooleanCellValue());
-            case FORMULA:
-                return evaluateFormulaCell(cell);
-            default:
-                return "";
+        try {
+            switch (cell.getCellType()) {
+                case STRING:
+                    return cell.getStringCellValue();
+                case NUMERIC:
+                    if (DateUtil.isCellDateFormatted(cell)) {
+                        return cell.getDateCellValue().toString();
+                    } else {
+                        DecimalFormat df = new DecimalFormat("0.##########");
+                        return df.format(cell.getNumericCellValue());
+                    }
+                case BOOLEAN:
+                    return String.valueOf(cell.getBooleanCellValue());
+                case FORMULA:
+                    return getRawCellValue(cell);
+                default:
+                    return "";
+            }
+        } catch (Exception e) {
+            System.err.println("Error getting string cell value: " + e.getMessage());
+            return "";
         }
     }
 
@@ -81,52 +86,43 @@ public class ExcelReader {
         if (cell == null) {
             return 0.0;
         }
-        switch (cell.getCellType()) {
-            case NUMERIC:
-                return cell.getNumericCellValue();
-            case STRING:
-                try {
-                    return Double.parseDouble(cell.getStringCellValue());
-                } catch (NumberFormatException e) {
-                    System.err.println("Cannot parse double from string: " + cell.getStringCellValue());
+        try {
+            switch (cell.getCellType()) {
+                case NUMERIC:
+                    return cell.getNumericCellValue();
+                case STRING:
+                    String cellValue = cell.getStringCellValue().trim();
+                    if (cellValue.isEmpty()) {
+                        return 0.0;
+                    }
+                    try {
+                        return Double.parseDouble(cellValue);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Cannot parse double from string: " + cellValue);
+                        return 0.0;
+                    }
+                case FORMULA:
+                    String rawValue = getRawCellValue(cell);
+                    if (rawValue.isEmpty()) {
+                        return 0.0;
+                    }
+                    return Double.parseDouble(rawValue);
+                default:
                     return 0.0;
-                }
-            case FORMULA:
-                return evaluateFormulaCellAsNumeric(cell);
-            default:
-                return 0.0;
+            }
+        } catch (Exception e) {
+            System.err.println("Error getting numeric cell value: " + e.getMessage());
+            return 0.0;
         }
     }
 
-    private String evaluateFormulaCell(Cell cell) {
+    private String getRawCellValue(Cell cell) {
         try {
-            FormulaEvaluator evaluator = cell.getSheet().getWorkbook().getCreationHelper().createFormulaEvaluator();
-            CellValue cellValue = evaluator.evaluate(cell);
-            switch (cellValue.getCellType()) {
-                case STRING:
-                    return cellValue.getStringValue();
-                case NUMERIC:
-                    DecimalFormat df = new DecimalFormat("0.##########");
-                    return df.format(cellValue.getNumberValue());
-                case BOOLEAN:
-                    return String.valueOf(cellValue.getBooleanValue());
-                default:
-                    return "";
-            }
+            DataFormatter formatter = new DataFormatter();
+            return formatter.formatCellValue(cell, cell.getSheet().getWorkbook().getCreationHelper().createFormulaEvaluator());
         } catch (Exception e) {
             System.err.println("Error evaluating formula: " + e.getMessage());
             return "";
-        }
-    }
-
-    private double evaluateFormulaCellAsNumeric(Cell cell) {
-        try {
-            FormulaEvaluator evaluator = cell.getSheet().getWorkbook().getCreationHelper().createFormulaEvaluator();
-            CellValue cellValue = evaluator.evaluate(cell);
-            return cellValue.getNumberValue();
-        } catch (Exception e) {
-            System.err.println("Error evaluating formula as numeric: " + e.getMessage());
-            return 0.0;
         }
     }
 }
